@@ -484,7 +484,7 @@ abstract class DatabaseInstanceNew extends DatabaseInstanceBase implements IData
     this.securityGroupId = this.securityGroup.securityGroupId;
 
     let monitoringRole;
-    if (props.monitoringInterval) {
+    if (props.monitoringInterval && props.monitoringInterval.toSeconds()) {
       monitoringRole = new iam.Role(this, 'MonitoringRole', {
         assumedBy: new iam.ServicePrincipal('monitoring.rds.amazonaws.com'),
         managedPolicies: [iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonRDSEnhancedMonitoringRole')],

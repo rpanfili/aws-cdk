@@ -32,7 +32,7 @@ export = {
         DBSubnetGroupName: { Ref: "DatabaseSubnets56F17B9A" },
         MasterUsername: "admin",
         MasterUserPassword: "tooshort",
-        VpcSecurityGroupIds: [ {"Fn::GetAtt": ["DatabaseSecurityGroup5C91FDCB", "GroupId"]}]
+        VpcSecurityGroupIds: [{ "Fn::GetAtt": ["DatabaseSecurityGroup5C91FDCB", "GroupId"] }]
       },
       DeletionPolicy: 'Retain',
       UpdateReplacePolicy: 'Retain'
@@ -70,7 +70,7 @@ export = {
       DBSubnetGroupName: { Ref: "DatabaseSubnets56F17B9A" },
       MasterUsername: "admin",
       MasterUserPassword: "tooshort",
-      VpcSecurityGroupIds: [ {"Fn::GetAtt": ["DatabaseSecurityGroup5C91FDCB", "GroupId"]}]
+      VpcSecurityGroupIds: [{ "Fn::GetAtt": ["DatabaseSecurityGroup5C91FDCB", "GroupId"] }]
     }));
 
     test.done();
@@ -105,7 +105,7 @@ export = {
       DBSubnetGroupName: { Ref: "DatabaseSubnets56F17B9A" },
       MasterUsername: "admin",
       MasterUserPassword: "tooshort",
-      VpcSecurityGroupIds: [ "SecurityGroupId12345" ]
+      VpcSecurityGroupIds: ["SecurityGroupId12345"]
     }));
 
     test.done();
@@ -345,11 +345,70 @@ export = {
     );
 
     test.done();
+  },
+
+  "cluster with enabled monitoring"(test: Test) {
+    // GIVEN
+    const stack = testStack();
+    const vpc = new ec2.Vpc(stack, "VPC");
+
+    // WHEN
+    new DatabaseCluster(stack, "Database", {
+      engine: DatabaseClusterEngine.AURORA,
+      instances: 1,
+      masterUser: {
+        username: "admin"
+      },
+      instanceProps: {
+        instanceType: ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE2, ec2.InstanceSize.SMALL),
+        vpc
+      },
+      monitoringInterval: cdk.Duration.minutes(1),
+    });
+
+    // THEN
+    expect(stack).to(haveResource("AWS::RDS::DBInstance", {
+      MonitoringInterval: 60,
+      MonitoringRoleArn: {
+        "Fn::GetAtt": ["DatabaseMonitoringRole576991DA", "Arn"]
+      }
+    }, ResourcePart.Properties));
+
+    expect(stack).to(haveResource("AWS::IAM::Role", {
+      AssumeRolePolicyDocument: {
+        Statement: [
+          {
+            Action: "sts:AssumeRole",
+            Effect: "Allow",
+            Principal: {
+              Service: "monitoring.rds.amazonaws.com"
+            }
+          }
+        ],
+        Version: "2012-10-17"
+      },
+      ManagedPolicyArns: [
+        {
+          "Fn::Join": [
+            "",
+            [
+              "arn:",
+              {
+                Ref: "AWS::Partition"
+              },
+              ":iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
+            ]
+          ]
+        }
+      ]
+    }));
+
+    test.done();
   }
 };
 
 function testStack() {
-  const stack = new cdk.Stack(undefined, undefined, { env: { account: '12345', region: 'us-test-1' }});
+  const stack = new cdk.Stack(undefined, undefined, { env: { account: '12345', region: 'us-test-1' } });
   stack.node.setContext('availability-zones:12345:us-test-1', ['us-test-1a', 'us-test-1b']);
   return stack;
 }

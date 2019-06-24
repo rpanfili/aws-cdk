@@ -1,7 +1,8 @@
 import ec2 = require('@aws-cdk/aws-ec2');
+import { ManagedPolicy, Role, ServicePrincipal } from '@aws-cdk/aws-iam';
 import kms = require('@aws-cdk/aws-kms');
 import secretsmanager = require('@aws-cdk/aws-secretsmanager');
-import { Construct,   RemovalPolicy, Resource, Token } from '@aws-cdk/core';
+import { Construct, Duration, RemovalPolicy, Resource, Token } from '@aws-cdk/core';
 import { DatabaseClusterAttributes, IDatabaseCluster } from './cluster-ref';
 import { DatabaseSecret } from './database-secret';
 import { Endpoint } from './endpoint';
@@ -128,6 +129,14 @@ export interface DatabaseClusterProps {
    * @default - Retain cluster.
    */
   readonly removalPolicy?: RemovalPolicy
+
+  /**
+   * The interval, in seconds, between points when Amazon RDS collects enhanced
+   * monitoring metrics for the DB instances.
+   *
+   * @default no enhanced monitoring
+   */
+  readonly monitoringInterval?: Duration;
 }
 
 /**
@@ -345,6 +354,17 @@ export class DatabaseCluster extends DatabaseClusterBase {
 
     // Get the actual subnet objects so we can depend on internet connectivity.
     const internetConnected = props.instanceProps.vpc.selectSubnets(props.instanceProps.vpcSubnets).internetConnectivityEstablished;
+
+    let monitoringRole;
+    if (props.monitoringInterval && props.monitoringInterval.toSeconds()) {
+      monitoringRole = new Role(this, "MonitoringRole", {
+        assumedBy: new ServicePrincipal("monitoring.rds.amazonaws.com"),
+        managedPolicies: [
+          ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonRDSEnhancedMonitoringRole')
+        ]
+      });
+    }
+
     for (let i = 0; i < instanceCount; i++) {
       const instanceIndex = i + 1;
 
@@ -366,6 +386,8 @@ export class DatabaseCluster extends DatabaseClusterBase {
         // This is already set on the Cluster. Unclear to me whether it should be repeated or not. Better yes.
         dbSubnetGroupName: subnetGroup.ref,
         dbParameterGroupName: props.instanceProps.parameterGroup && props.instanceProps.parameterGroup.parameterGroupName,
+        monitoringInterval: props.monitoringInterval && props.monitoringInterval.toSeconds(),
+        monitoringRoleArn: monitoringRole && monitoringRole.roleArn
       });
 
       instance.applyRemovalPolicy(props.removalPolicy, {
